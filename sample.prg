@@ -5,7 +5,7 @@
 
 
 #translate print( <v1>[, <v2>])      =>  ;
-                   depura( <v1> [,  <v2> ] )
+                   msginfo( <v1> [,  <v2> ] )
 
 
 STATIC UsbDevices, usbDevice, tablet, protocolHelper, r, r1
@@ -39,7 +39,7 @@ Local Connected := .F.
      END
 
      If nCount ==0
-        WindAviso("No se localizaron dispositivos STU")
+        MsgInfo("No se localizaron dispositivos STU")
         Return Connected
      EndIf
 
@@ -55,7 +55,7 @@ Local Connected := .F.
     If r = 0
        Connected = .t.
     Else
-       WindAviso("No se pudo conectar")
+       MsgInfo("No se pudo conectar")
     EndIf
 
 Return Connected
@@ -149,10 +149,10 @@ caps = tablet:getCapability()
 info = tablet:getInformation()
 print("STU model: " + info:modelName)
 pId = tablet:getProductId()
-print("Product id: "+ dec2hex(pId))
+print("Product id: "+ dectohex(pId))
 
 encodingFlag = protocolHelper:simulateEncodingFlag(pId, caps:encodingFlag)
-print("encodingFlag: " + dec2hex(encodingFlag))
+print("encodingFlag: " + dectohex(encodingFlag))
 
 If nAnd(encodingFlag, EncodingFlag_24bit ) != 0
     encodingMode = iif(tablet:supportsWrite(), EncodingMode_24bit_Bulk, EncodingMode_24bit)
@@ -170,10 +170,10 @@ print(nAnd(EncodingFlag, EncodingFlag_1bit ))
 print(nAnd(EncodingFlag, EncodingFlag_16bit))
 print(nAnd(EncodingFlag, EncodingFlag_24bit ))
 print(tablet:supportsWrite(), "suportswrite")
-print("encodingMode: " + dec2hex(encodingMode))
+print("encodingMode: " + dectohex(encodingMode))
 
 
-filename := unescape("imagen.jpg")
+filename := unescape("screen.bmp")
 stuImage = protocolHelper:resizeAndFlatten(filename, 0, 0, 0, 0, caps:screenWidth, caps:screenHeight, encodingMode, Scale_Fit, .f., 0)
 
 print(filename, "filename")

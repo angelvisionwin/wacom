@@ -3,6 +3,10 @@
 #define EncodingMode_Raw        0x00
 #define EncodingMode_16bit_565  0x02
 
+#define Scale_Stretch   0
+#define Scale_Fit   1
+#define Scale_Clip  2
+
 CLASS TWacom 
 
     EXPORTED:   
@@ -16,17 +20,9 @@ CLASS TWacom
         METHOD Connect()
         METHOD ClearScreen()
         METHOD ShowDialog()
-        METHOD Disconnect()
+        METHOD End()
 
     PROTECTED: 
-
-        METHOD Init()
-        METHOD CanUseColor()
-        METHOD SetEncodingMode()
-        METHOD PaintButtons()
-        METHOD SaveAsImage( cFileName )
-        METHOD SendImageToTablet( cFileName )
-        
 
         DATA oUsbDevice         AS Object   INIT nil
         DATA oTablet            AS Object   INIT nil
@@ -35,8 +31,19 @@ CLASS TWacom
         DATA oInformation       AS Object   INIT nil
 
         DATA lUseColor          AS Logical  INIT .f.
+        DATA nEncodingMode      AS Numeric  INIT EncodingMode_Raw
 
         DATA oDialog            AS Object   INIT nil
+
+
+        METHOD Init()
+        METHOD CanUseColor()
+        METHOD SetEncodingMode()
+        METHOD PaintButtons()
+        METHOD SendImageToTablet( cFileName )
+        METHOD EnableInking()
+        METHOD DisableInking()
+        METHOD Disconnect()
 
 
 END CLASS
@@ -117,11 +124,12 @@ METHOD ShowDialog() CLASS TWacom
 Return( nil )
 
 
-METHOD Disconnect() CLASS TWacom
+METHOD End() CLASS TWacom
 
-    ::oTablet:disconnect()
+    ::DisableInking()
+    ::Disconnect()
 
-Return( nil )    
+Return( nil )
 
 
 METHOD Init() CLASS TWacom
@@ -145,7 +153,7 @@ METHOD SetEncodingMode() CLASS TWacom
 
     if ::lUseColor
 
-        ::nEncodingMode := nOr( EncodingMode_16bit_565, EncodingMode_Raw )
+        ::nEncodingMode := hb_BitOr( EncodingMode_16bit_565, EncodingMode_Raw )
 
     else
 
@@ -173,7 +181,7 @@ METHOD PaintButtons() CLASS TWacom
         nPosY   := Int( ::oCapability:screenHeight * 6 / 7 )
         nHeight := ::oCapability:screenHeight - nPosY
 
-        TButton():New( nPosY, 0         , ::cTextAceptar,   ::oDialog, {|| ::SaveAsImage() }, nWidth, nHeight, , , , .t. )
+        TButton():New( nPosY, 0         , ::cTextAceptar,   ::oDialog, {|| ::EnableInking() }, nWidth, nHeight, , , , .t. )
         TButton():New( nPosY, nWidth    , ::cTextBorrar,    ::oDialog, {|| ::ClearScreen() }, nWidth, nHeight, , , , .t. )
         TButton():New( nPosY, nWidth * 2, ::cTextCancelar,  ::oDialog, {|| ::oDialog:End() }, nWidth, nHeight, , , , .t. )
 
@@ -191,20 +199,52 @@ METHOD PaintButtons() CLASS TWacom
 
 return( nil )    
 
-METHOD SaveAsImage( cFileName ) CLASS TWacom
+METHOD SendImageToTablet( cFileName ) CLASS TWacom
 
-    hb_default( @cFileName, 'screen.png')
+    Local hBitmap AS Numeric := 0
+
+    hb_default( @cFileName, 'screen.jpg')
 
     ::oDialog:SaveAsImage( cFileName )
+
+    // format: { hBitmap, hPalette, nBmpWidth, nBmpHeight, lAlpha, cName, lResource, cType }
+    hBitmap := FW_ReadImage( , cFileName )[ 1 ]
+
+    
+    bitmapData := ::oProtocolHelper:resizeAndFlatten( cFileName, ;
+                                                      0, ;
+                                                      0, ;
+                                                      ::oCapability:screenWidth, ;
+                                                      ::oCapability:screenHeight,;
+                                                      ::oCapability:screenWidth, ;
+                                                      ::oCapability:screenHeight, ;
+                                                      ::luseColor, Scale_Fit, 0, 0);
+
+    ::oTablet:writeImage( ::nEncodingMode, bitmapData )
+
+return( nil )
+
+
+METHOD EnableInking()
+
+    ::oTablet:setInkingMode( 1 )
+
+return( nil )    
+
+METHOD DisableInking()
+
+    ::oTablet:setInkingMode( 0 )
 
 return( nil )    
 
 
-METHOD SendImageToTablet( cFileName ) CLASS TWacom
+METHOD Disconnect() CLASS TWacom
 
-    
+    ::oTablet:disconnect()
 
-return( nil )
+Return( nil )    
+
+
 
 
 Function main()
@@ -217,7 +257,7 @@ Function main()
 
             :ClearScreen()
             :ShowDialog()
-            :Disconnect()
+            :End()
 
         endif
 
