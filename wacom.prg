@@ -41,6 +41,7 @@ CLASS TWacom
         METHOD SetEncodingMode()
         METHOD PaintButtons()
         METHOD SendImageToTablet( cFileName )
+        METHOD GetImageFromTablet( cFileName )
         METHOD EnableInking()
         METHOD DisableInking()
         METHOD Disconnect()
@@ -118,7 +119,8 @@ METHOD ShowDialog() CLASS TWacom
                             PIXEL 
                             //STYLE nOr( WS_POPUP )
 
-    
+    ::EnableInking()
+
     ACTIVATE DIALOG ::oDialog CENTERED ON INIT oThis:PaintButtons()
 
 Return( nil )
@@ -181,7 +183,7 @@ METHOD PaintButtons() CLASS TWacom
         nPosY   := Int( ::oCapability:screenHeight * 6 / 7 )
         nHeight := ::oCapability:screenHeight - nPosY
 
-        TButton():New( nPosY, 0         , ::cTextAceptar,   ::oDialog, {|| ::EnableInking() }, nWidth, nHeight, , , , .t. )
+        TButton():New( nPosY, 0         , ::cTextAceptar,   ::oDialog, {|| ::SendImageToTablet() }, nWidth, nHeight, , , , .t. )
         TButton():New( nPosY, nWidth    , ::cTextBorrar,    ::oDialog, {|| ::ClearScreen() }, nWidth, nHeight, , , , .t. )
         TButton():New( nPosY, nWidth * 2, ::cTextCancelar,  ::oDialog, {|| ::oDialog:End() }, nWidth, nHeight, , , , .t. )
 
@@ -221,6 +223,12 @@ METHOD SendImageToTablet( cFileName ) CLASS TWacom
                                                       ::luseColor, Scale_Fit, 0, 0);
 
     ::oTablet:writeImage( ::nEncodingMode, bitmapData )
+
+return( nil )
+
+
+METHOD GetImageFromTablet( cFileName ) CLASS TWacom
+
 
 return( nil )
 
