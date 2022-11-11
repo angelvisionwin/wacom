@@ -209,8 +209,8 @@ METHOD SendImageToTablet( cFileName ) CLASS TWacom
 
     ::oDialog:SaveAsImage( cFileName )
 
+    // hBitmap := FW_ReadImage( , cFileName )[ 1 ]
     // format: { hBitmap, hPalette, nBmpWidth, nBmpHeight, lAlpha, cName, lResource, cType }
-    hBitmap := FW_ReadImage( , cFileName )[ 1 ]
 
     
     bitmapData := ::oProtocolHelper:resizeAndFlatten( cFileName, ;
