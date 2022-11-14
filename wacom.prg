@@ -1,51 +1,31 @@
 #include 'FiveWin.Ch'
 
-#define EncodingMode_Raw        0x00
-#define EncodingMode_16bit_565  0x02
-
-#define Scale_Stretch   0
-#define Scale_Fit   1
-#define Scale_Clip  2
-
 CLASS TWacom 
 
     EXPORTED:   
 
-        DATA lConnected         AS Logical  INIT .f.
         DATA cTextAceptar       AS String   INIT 'Aceptar'
         DATA cTextBorrar        AS String   INIT 'Borrar'
         DATA cTextCancelar      AS String   INIT 'Cancelar'
+        DATA nDimensionX        AS Numeric  INIT 300
+        DATA nDimensionY        AS Numeric  INIT 150
+        DATA cMimeType          AS String   INIT 'image/png' // ( image/bmp image/tiff image/png )
+        DATA nInkWidth          AS Numeric  INIT 0.5
+        DATA nInkColor          AS Numeric  INIT 0xff0000
+        DATA nInkBackGround     AS Numeric  INIT 0xffffff
+        DATA nPaddingX          AS Numeric  INIT 0.0
+        DATA nPaddingY          AS Numeric  INIT 0.0
 
         METHOD New()
-        METHOD Connect()
-        METHOD ClearScreen()
-        METHOD ShowDialog()
+        METHOD Capture()
         METHOD End()
 
     PROTECTED: 
 
-        DATA oUsbDevice         AS Object   INIT nil
-        DATA oTablet            AS Object   INIT nil
-        DATA oProtocolHelper    AS Object   INIT nil
-        DATA oCapability        AS Object   INIT nil
-        DATA oInformation       AS Object   INIT nil
-
-        DATA lUseColor          AS Logical  INIT .f.
-        DATA nEncodingMode      AS Numeric  INIT EncodingMode_Raw
-
-        DATA oDialog            AS Object   INIT nil
-
+        DATA cLicense   AS String INIT ''
+        DATA aErrorCodes AS Array INIT { => }
 
         METHOD Init()
-        METHOD CanUseColor()
-        METHOD SetEncodingMode()
-        METHOD PaintButtons()
-        METHOD SendImageToTablet( cFileName )
-        METHOD GetImageFromTablet( cFileName )
-        METHOD EnableInking()
-        METHOD DisableInking()
-        METHOD Disconnect()
-
 
 END CLASS
 
@@ -56,221 +36,116 @@ METHOD New() CLASS TWacom
 Return( Self )    
 
 
-METHOD Connect() CLASS TWacom
+METHOD Capture( cFileName, cTextTop, cTextBottom ) CLASS TWacom
 
-    Local oUsbDevices
+    Local oSigCtl AS Object := nil
+    Local oDynCapt AS Object := nil
+    Local nFlags AS Numeric := 0
+    Local nResult AS Numeric := 0
 
-    ::lConnected := .f.
+    hb_default( @cFileName, 'sig.png' )
+    hb_default( @cTextTop, ' ' )
+    hb_default( @cTextBottom, ' ' )
+
 
     TRY
      
-        oUsbDevices = CreateObject( 'WacomGSS.STU.UsbDevices' )
+        oSigCtl := CreateObject( 'Florentis.SigCtl' )
+        oDynCapt := CreateObject( 'Florentis.DynamicCapture' )
 
     CATCH oError
 
-        MsgAlert( 'No se encuentran los controladores de la tableta de firma', 'Atención' )
-        return( .f. )
+        MsgAlert( 'No están instalados los componentes de firma, están disponibles en la carpeta "wacom" de Visionwin Gestión', 'Atención' )
+        return( '' )
 
     END
+            
+    oSigCtl:Licence := ::cLicense 
+    nResult := oDynCapt:Capture( oSigCtl, cTextTop, cTextBottom )
 
-    if oUsbDevices:Count <= 0
-
-        MsgAlert( 'No se encuentran dispositivos conectados', 'Atención' )
-        return( .f. )
-
-    endif
-    
-    ::oUsbDevice      := oUsbDevices:Item( 0 )
-    ::oTablet         := CreateObject( 'WacomGSS.STU.Tablet' )
+    if nResult == 0
         
-    if ::oTablet:usbConnect( ::oUsbDevice, 0 ) != 0
+        //SigObj.outputFilename | SigObj.color32BPP | SigObj.encodeData
+        nFlags  := nOr( 0x1000,  0x80000 , 0x400000 )    
+        nResult := oSigCtl:Signature:RenderBitmap( cFileName, ;   
+                                                   ::nDimensionX, ;
+                                                   ::nDimensionY, ;
+                                                   ::cMimeType, ; 
+                                                   ::nInkWidth, ;     
+                                                   ::nInkColor, ;     
+                                                   ::nInkBackGround, ;
+                                                   ::nPaddingX, ; 
+                                                   ::nPaddingY, ; 
+                                                   nFlags )         
 
-        MsgAlert( 'Ha habido un problema conectando con la tablet', 'Atención' )
-        return( .f. )
+        return( cFileName )                                                   
 
     endif
 
-    ::oProtocolHelper := CreateObject ('WacomGSS.STU.ProtocolHelper')
+    if aScan( { 1, 100, 101, 103 }, nResult ) != 0
 
-    ::oCapability  := ::oTablet:getCapability()
-    ::oInformation := ::oTablet:getInformation()
+        MsgAlert( ::aErrorCodes[ Alltrim( Str( nResult ) ) ], 'Firma no completada')
+        Return( '' )
 
-    ::CanUseColor()
-    ::SetEncodingMode()
+    endif
 
-    ::lConnected := .t.
+    MsgAlert( 'Error desconocido en captura, código de error : ' + Str( nResult ), 'Firma no completada' )
 
-
-Return( ::lConnected )    
-
-
-METHOD ClearScreen() CLASS TWacom
-
-    ::oTablet:setClearScreen()
-
-Return( nil )    
-
-METHOD ShowDialog() CLASS TWacom
-
-    Local oThis := Self
-
-    DEFINE DIALOG ::oDialog FROM 0, 0 to ::oCapability:screenHeight, ::oCapability:screenWidth ;
-                            COLOR CLR_BLACK, CLR_WHITE ;
-                            PIXEL 
-                            //STYLE nOr( WS_POPUP )
-
-    ::EnableInking()
-
-    ACTIVATE DIALOG ::oDialog CENTERED ON INIT oThis:PaintButtons()
-
-Return( nil )
+Return( '' )    
 
 
 METHOD End() CLASS TWacom
-
-    ::DisableInking()
-    ::Disconnect()
 
 Return( nil )
 
 
 METHOD Init() CLASS TWacom
 
+    ::cLicense    := 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI3YmM5Y2IxYWIxMGE0NmUxODI2N2E5MTJkYTA2ZTI3NiIsImV4cCI6MjE0NzQ4MzY0NywiaWF0IjoxNTYwOTUwMjcyLCJyaWdodHMiOlsiU0lHX1NES19DT1JFIiwiU0lHQ0FQVFhfQUNDRVNTIl0sImRldmljZXMiOlsiV0FDT01fQU5ZIl0sInR5cGUiOiJwcm9kIiwibGljX25hbWUiOiJTaWduYXR1cmUgU0RLIiwid2Fjb21faWQiOiI3YmM5Y2IxYWIxMGE0NmUxODI2N2E5MTJkYTA2ZTI3NiIsImxpY191aWQiOiJiODUyM2ViYi0xOGI3LTQ3OGEtYTlkZS04NDlmZTIyNmIwMDIiLCJhcHBzX3dpbmRvd3MiOltdLCJhcHBzX2lvcyI6W10sImFwcHNfYW5kcm9pZCI6W10sIm1hY2hpbmVfaWRzIjpbXX0.ONy3iYQ7lC6rQhou7rz4iJT_OJ20087gWz7GtCgYX3uNtKjmnEaNuP3QkjgxOK_vgOrTdwzD-nm-ysiTDs2GcPlOdUPErSp_bcX8kFBZVmGLyJtmeInAW6HuSp2-57ngoGFivTH_l1kkQ1KMvzDKHJbRglsPpd4nVHhx9WkvqczXyogldygvl0LRidyPOsS5H2GYmaPiyIp9In6meqeNQ1n9zkxSHo7B11mp_WXJXl0k1pek7py8XYCedCNW5qnLi4UCNlfTd6Mk9qz31arsiWsesPeR9PN121LBJtiPi023yQU8mgb9piw_a-ccciviJuNsEuRDN3sGnqONG3dMSA'
+
+    ::aErrorCodes[ '1' ]   := 'Se ha pulsado cancelar'
+    ::aErrorCodes[ '100' ] := 'Error en captura 100: Dispositivo de firma no disponible'
+    ::aErrorCodes[ '101' ] := 'Error en captura 101: Error en dispositivo'
+    ::aErrorCodes[ '103' ] := 'Error en captura 103: Licencia inválida ó dispositivo desconectado'
+         
+
 Return( Self )    
 
 
-METHOD CanUseColor() CLASS TWacom
-
-    // Si no es la STU-520A (color) siempre en b/n
-    // Si no está el driver de la STU-520 tambíen desactiva el color
-    // El proceso es más rápido
-            
-    ::lUseColor := DecToHex( ::oUsbDevice:idProduct ) == 'A3' 
-    ::lUseColor := ::lUseColor .and. ::oTablet:supportsWrite()
-
-Return( ::lUseColor )    
-
-
-METHOD SetEncodingMode() CLASS TWacom
-
-    if ::lUseColor
-
-        ::nEncodingMode := hb_BitOr( EncodingMode_16bit_565, EncodingMode_Raw )
-
-    else
-
-        ::nEncodingMode := EncodingMode_Raw;
-
-    endif
-
-Return( nil )
-
-
-METHOD PaintButtons() CLASS TWacom
-
-    Local nWidth    AS Numeric := 0
-    Local nPosX     AS Numeric := 0
-    Local nPosY     AS Numeric := 0
-    Local nHeight   AS Numeric := 0
-
-    // Para todos los modelos excepto la STU-300 ( A2 )
-    // los botones van abajo, la STU-300 tiene poco altura, 
-    // por lo que se ponen en un lateral
-    
-    if DecToHex( ::oUsbDevice:idProduct ) != 'A2' 
-
-        nWidth  := Int( ::oCapability:screenWidth / 3 )
-        nPosY   := Int( ::oCapability:screenHeight * 6 / 7 )
-        nHeight := ::oCapability:screenHeight - nPosY
-
-        TButton():New( nPosY, 0         , ::cTextAceptar,   ::oDialog, {|| ::SendImageToTablet() }, nWidth, nHeight, , , , .t. )
-        TButton():New( nPosY, nWidth    , ::cTextBorrar,    ::oDialog, {|| ::ClearScreen() }, nWidth, nHeight, , , , .t. )
-        TButton():New( nPosY, nWidth * 2, ::cTextCancelar,  ::oDialog, {|| ::oDialog:End() }, nWidth, nHeight, , , , .t. )
-
-    else
-
-        nPosX   := Int( ::oCapability:screenWidth * 3 / 4 )
-        nWidth  := ::oCapability:screenWidth - nPosX
-        nHeight := Int( ::oCapability:screenHeight / 3 )
-
-        TButton():New( 0          , nPosX, ::cTextAceptar,   ::oDialog, {|| .t. }, nWidth, nHeight, , , , .t. )
-        TButton():New( nHeight    , nPosX, ::cTextBorrar,    ::oDialog, {|| ::ClearScreen() }, nWidth, nHeight, , , , .t. )
-        TButton():New( nHeight * 2, nPosX, ::cTextCancelar,  ::oDialog, {|| ::oDialog:End() }, nWidth, nHeight, , , , .t. )
-
-    endif
-
-return( nil )    
-
-METHOD SendImageToTablet( cFileName ) CLASS TWacom
-
-    Local hBitmap AS Numeric := 0
-
-    hb_default( @cFileName, 'screen.jpg')
-
-    ::oDialog:SaveAsImage( cFileName )
-
-    // hBitmap := FW_ReadImage( , cFileName )[ 1 ]
-    // format: { hBitmap, hPalette, nBmpWidth, nBmpHeight, lAlpha, cName, lResource, cType }
-
-    
-    bitmapData := ::oProtocolHelper:resizeAndFlatten( cFileName, ;
-                                                      0, ;
-                                                      0, ;
-                                                      ::oCapability:screenWidth, ;
-                                                      ::oCapability:screenHeight,;
-                                                      ::oCapability:screenWidth, ;
-                                                      ::oCapability:screenHeight, ;
-                                                      ::luseColor, Scale_Fit, 0, 0);
-
-    ::oTablet:writeImage( ::nEncodingMode, bitmapData )
-
-return( nil )
-
-
-METHOD GetImageFromTablet( cFileName ) CLASS TWacom
-
-
-return( nil )
-
-
-METHOD EnableInking()
-
-    ::oTablet:setInkingMode( 1 )
-
-return( nil )    
-
-METHOD DisableInking()
-
-    ::oTablet:setInkingMode( 0 )
-
-return( nil )    
-
-
-METHOD Disconnect() CLASS TWacom
-
-    ::oTablet:disconnect()
-
-Return( nil )    
-
-
-
-
-Function main()
+Function Main()
 
     Local oWacom
+    Local cFileName := ''
 
-    WITH OBJECT oWacom := TWacom():New()
+    oWacom := TWacom():New()
 
-        if :Connect()
+    cFileName := oWacom:Capture( 'mifirma.png' )
 
-            :ClearScreen()
-            :ShowDialog()
-            :End()
+    if cFileName != ''
 
-        endif
+        MsgInfo( 'Captura correcta' )
 
-    END WITH
+    endif
 
 Return ( 0 )
 
+
+
+Function _Main()
+
+    Local oSigCtl   AS Object := nil
+    Local oDynCapt  AS Object := nil
+    Local nFlags    AS Numeric := 0
+    Local nResult   AS Numeric := 0
+
+    oSigCtl := CreateObject( 'Florentis.SigCtl' )
+    oSigCtl:Licence := 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI3YmM5Y2IxYWIxMGE0NmUxODI2N2E5MTJkYTA2ZTI3NiIsImV4cCI6MjE0NzQ4MzY0NywiaWF0IjoxNTYwOTUwMjcyLCJyaWdodHMiOlsiU0lHX1NES19DT1JFIiwiU0lHQ0FQVFhfQUNDRVNTIl0sImRldmljZXMiOlsiV0FDT01fQU5ZIl0sInR5cGUiOiJwcm9kIiwibGljX25hbWUiOiJTaWduYXR1cmUgU0RLIiwid2Fjb21faWQiOiI3YmM5Y2IxYWIxMGE0NmUxODI2N2E5MTJkYTA2ZTI3NiIsImxpY191aWQiOiJiODUyM2ViYi0xOGI3LTQ3OGEtYTlkZS04NDlmZTIyNmIwMDIiLCJhcHBzX3dpbmRvd3MiOltdLCJhcHBzX2lvcyI6W10sImFwcHNfYW5kcm9pZCI6W10sIm1hY2hpbmVfaWRzIjpbXX0.ONy3iYQ7lC6rQhou7rz4iJT_OJ20087gWz7GtCgYX3uNtKjmnEaNuP3QkjgxOK_vgOrTdwzD-nm-ysiTDs2GcPlOdUPErSp_bcX8kFBZVmGLyJtmeInAW6HuSp2-57ngoGFivTH_l1kkQ1KMvzDKHJbRglsPpd4nVHhx9WkvqczXyogldygvl0LRidyPOsS5H2GYmaPiyIp9In6meqeNQ1n9zkxSHo7B11mp_WXJXl0k1pek7py8XYCedCNW5qnLi4UCNlfTd6Mk9qz31arsiWsesPeR9PN121LBJtiPi023yQU8mgb9piw_a-ccciviJuNsEuRDN3sGnqONG3dMSA'
+
+    oDynCapt := CreateObject( 'Florentis.DynamicCapture' )
+    oDynCapt:Capture( oSigCtl, 'Angel Salom', 'Alb. : 282-1102' )
+
+    nFlags  := nOr( 0x1000,  0x80000 , 0x400000 )    //SigObj.outputFilename | SigObj.color32BPP | SigObj.encodeData
+    nResult := oSigCtl:Signature:RenderBitmap( 'firma.png', 300, 150, "image/png", 0.5, 0xff0000, 0xffffff, 0.0, 0.0, nFlags )
+
+return( nil )    
 
