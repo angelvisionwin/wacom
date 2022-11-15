@@ -20,6 +20,7 @@ wacom.prg
 -lhbmzip
 -lminizip
 -lhbtip
+-lhbmisc
 
 -Lc:\si\nlen\Bcc74\lib
 -lcw32mt
